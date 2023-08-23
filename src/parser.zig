@@ -54,8 +54,9 @@ pub const Parser = struct {
             std.debug.print("Failed to create precedence table{!}\n", .{err});
         };
 
+        //future: could build these lookup tables statically
         inline for (keys, vals) |key, val| p.precedences.putAssumeCapacity(key, val);
-        p.prefix_parse_map.ensureTotalCapacity(4) catch |err| {
+        p.prefix_parse_map.ensureTotalCapacity(8) catch |err| {
             std.debug.print("Failed to register prefix callbacks: {!}\n", .{err});
             return p;
         };
@@ -64,6 +65,10 @@ pub const Parser = struct {
         p.prefix_parse_map.putAssumeCapacity(.INT, Parser.parseIntegerLiteral);
         p.prefix_parse_map.putAssumeCapacity(.BANG, Parser.parsePrefixExpression);
         p.prefix_parse_map.putAssumeCapacity(.MINUS, Parser.parsePrefixExpression);
+        p.prefix_parse_map.putAssumeCapacity(.TRUE, Parser.parseBoolean);
+        p.prefix_parse_map.putAssumeCapacity(.FALSE, Parser.parseBoolean);
+        p.prefix_parse_map.putAssumeCapacity(.LPAREN, Parser.parseGroupedExpression);
+        p.prefix_parse_map.putAssumeCapacity(.IF, Parser.parseIfExpression);
 
         p.infix_parse_map.ensureTotalCapacity(8) catch |err| {
             std.debug.print("Failed to register infix callbacks: {!}\n", .{err});
@@ -282,6 +287,82 @@ pub const Parser = struct {
         return expression;
     }
 
+    fn parseBoolean(self: *Parser) error{OutOfMemory}!?ast.Expression {
+        var expression = ast.Expression{ .boolean = try self.allocator.create(ast.Expression.Boolean) };
+        expression.boolean.token = self.current_token;
+        expression.boolean.value = self.current_token.type == .TRUE;
+        return expression;
+    }
+
+    fn parseGroupedExpression(self: *Parser) error{OutOfMemory}!?ast.Expression {
+        self.nextToken();
+
+        const exp = self.parseExpression(.LOWEST);
+        if (self.peek_token.type != .RPAREN) return null;
+
+        return exp;
+    }
+
+    fn parseIfExpression(self: *Parser) error{OutOfMemory}!?ast.Expression {
+        var expression = ast.Expression{ .if_expression = try self.allocator.create(ast.Expression.IfExpression) };
+        var if_expression = expression.if_expression;
+        if_expression.token = self.current_token;
+
+        if (!self.expectPeek(.LPAREN)) return null;
+
+        self.nextToken();
+
+        var expr_maybe = try self.parseExpression(.LOWEST);
+        if (expr_maybe) |expr_local| {
+            const expr = try self.allocator.create(ast.Expression);
+            expr.* = expr_local;
+            if_expression.condition = expr;
+        } else {
+            if_expression.condition = null;
+        }
+
+        if (!self.expectPeek(.RPAREN)) return null;
+
+        if (!self.expectPeek(.LBRACE)) return null;
+
+        var block_local = try self.parseBlockStatement();
+        const block = try self.allocator.create(ast.Statement.BlockStatement);
+        block.* = block_local;
+        if_expression.consequence = block;
+        if_expression.alternative = null;
+
+        if (self.peek_token.type == .ELSE) {
+            self.nextToken();
+
+            if (!self.expectPeek(.LBRACE)) {
+                return null;
+            }
+
+            var alt_local = try self.parseBlockStatement();
+            const alt = try self.allocator.create(ast.Statement.BlockStatement);
+            alt.* = alt_local;
+
+            if_expression.alternative = alt;
+        }
+
+        return expression;
+    }
+
+    fn parseBlockStatement(self: *Parser) error{OutOfMemory}!ast.Statement.BlockStatement {
+        var statement = ast.Statement.BlockStatement{ .token = self.current_token, .statements = std.ArrayList(ast.Statement).init(self.allocator) };
+
+        self.nextToken();
+        while (self.current_token.type != .RBRACE and self.current_token.type != .EOF) {
+            var stat = try self.parseStatement();
+            if (stat) |s| {
+                try statement.statements.append(s);
+            }
+            self.nextToken();
+        }
+
+        return statement;
+    }
+
     fn noPrefixParseError(self: *Parser, t: Token.Type) error{OutOfMemory}!void {
         const str = try std.fmt.allocPrint(self.allocator, "no prefix parse function for {s}", .{@tagName(t)});
         try self.errors.append(str);
@@ -437,7 +518,6 @@ test "parse prefix expression" {
 }
 
 test "parse infix expression" {
-    std.debug.print("\n", .{});
     const inputs = [_][]const u8{ "5 + 5;", "5 - 5;", "5 * 5;", "5 / 5;", "5 > 5;", "5 < 5;", "5 == 5;", "5 != 5;" };
     const left_vals = [_]i64{ 5, 5, 5, 5, 5, 5, 5, 5 };
     const operators = [_][]const u8{ "+", "-", "*", "/", ">", "<", "==", "!=" };
@@ -463,4 +543,103 @@ test "parse infix expression" {
         try std.testing.expectEqual(right_val, infix.right.?.integer_literal.value);
         try std.testing.expectEqualSlices(u8, std.fmt.comptimePrint("{d}", .{right_val}), infix.right.?.integer_literal.token.literal);
     }
+}
+
+test "boolean expressions" {
+    const inputs = [_][]const u8{ "true;", "false;" };
+    const expected_vals = [_]bool{ true, false };
+
+    for (inputs, expected_vals) |input, expected| {
+        var lexer = Lexer.init(input);
+        var parser = Parser.init(std.testing.allocator, lexer);
+        defer parser.deinit();
+
+        var program = parser.parseProgram();
+
+        try checkParseError(&parser);
+        try std.testing.expectEqual(@as(usize, 1), program.statements.items.len);
+
+        const boolean = program.statements.items[0].expression_statement.expression.?.boolean;
+        try std.testing.expectEqual(expected, boolean.value);
+    }
+}
+
+test "boolean values" {
+    const inputs = [_][]const u8{ "true == true", "true != false", "false == false" };
+    const lefts = [_]bool{ true, true, false };
+    const operators = [_][]const u8{ "==", "!=", "==" };
+    const rights = [_]bool{ true, false, false };
+
+    for (inputs, lefts, operators, rights) |input, left, operator, right| {
+        var lexer = Lexer.init(input);
+        var parser = Parser.init(std.testing.allocator, lexer);
+        defer parser.deinit();
+
+        var program = parser.parseProgram();
+
+        try checkParseError(&parser);
+        try std.testing.expectEqual(@as(usize, 1), program.statements.items.len);
+
+        const infix = program.statements.items[0].expression_statement.expression.?.infix_expression;
+        try std.testing.expectEqual(left, infix.left.?.boolean.value);
+        try std.testing.expectEqual(right, infix.right.?.boolean.value);
+        try std.testing.expectEqual(operator, infix.operator);
+    }
+}
+
+test "if expression" {
+    const input = "if (x < y) { x }";
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(std.testing.allocator, lexer);
+    defer parser.deinit();
+
+    var program = parser.parseProgram();
+
+    try checkParseError(&parser);
+    try std.testing.expectEqual(@as(usize, 1), program.statements.items.len);
+
+    const statement = program.statements.items[0].expression_statement;
+    const if_expr = statement.expression.?.if_expression;
+
+    const infix = if_expr.condition.?.infix_expression;
+
+    try std.testing.expect(std.mem.eql(u8, "x", infix.left.?.identifier.value));
+    try std.testing.expect(std.mem.eql(u8, "<", infix.operator));
+    try std.testing.expect(std.mem.eql(u8, "y", infix.right.?.identifier.value));
+
+    try std.testing.expectEqual(@as(usize, 1), if_expr.consequence.statements.items.len);
+    const consequence = if_expr.consequence.statements.items[0].expression_statement;
+
+    try std.testing.expect(std.mem.eql(u8, "x", consequence.expression.?.identifier.value));
+    try std.testing.expect(null == if_expr.alternative);
+}
+
+test "if else expression" {
+    const input = "if (x < y) { x } else { y }";
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(std.testing.allocator, lexer);
+    defer parser.deinit();
+
+    var program = parser.parseProgram();
+
+    try checkParseError(&parser);
+    try std.testing.expectEqual(@as(usize, 1), program.statements.items.len);
+
+    const statement = program.statements.items[0].expression_statement;
+    const if_expr = statement.expression.?.if_expression;
+
+    const infix = if_expr.condition.?.infix_expression;
+
+    try std.testing.expect(std.mem.eql(u8, "x", infix.left.?.identifier.value));
+    try std.testing.expect(std.mem.eql(u8, "<", infix.operator));
+    try std.testing.expect(std.mem.eql(u8, "y", infix.right.?.identifier.value));
+
+    try std.testing.expectEqual(@as(usize, 1), if_expr.consequence.statements.items.len);
+    const consequence = if_expr.consequence.statements.items[0].expression_statement;
+
+    try std.testing.expect(std.mem.eql(u8, "x", consequence.expression.?.identifier.value));
+
+    try std.testing.expectEqual(@as(usize, 1), if_expr.alternative.?.statements.items.len);
+    const alternative = if_expr.alternative.?.statements.items[0].expression_statement;
+    try std.testing.expect(std.mem.eql(u8, "y", alternative.expression.?.identifier.value));
 }

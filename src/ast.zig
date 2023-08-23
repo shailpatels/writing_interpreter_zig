@@ -13,7 +13,11 @@ pub const Program = struct {
     }
 
     pub fn deinit(self: *Program) void {
-        for (self.statements.items) |s| {
+        self.deinitStatement(&self.statements);
+    }
+
+    fn deinitStatement(self: *Program, statements: *std.ArrayList(Statement)) void {
+        for (statements.items) |s| {
             switch (s) {
                 .let_statement => |l| {
                     self.allocator.destroy(l.name);
@@ -27,10 +31,14 @@ pub const Program = struct {
                     if (e.expression) |expr| self.deinitExpression(expr);
                     self.allocator.destroy(e);
                 },
+                .block_statement => |b| {
+                    self.deinitStatement(&b.statements);
+                    self.allocator.destroy(b);
+                },
             }
         }
 
-        self.statements.deinit();
+        statements.deinit();
     }
 
     fn deinitExpression(self: *Program, e: *Expression) void {
@@ -45,6 +53,18 @@ pub const Program = struct {
                 if (i.left) |expr| self.deinitExpression(expr);
 
                 self.allocator.destroy(i);
+            },
+            .if_expression => |f| {
+                if (f.condition) |con| self.deinitExpression(con);
+                self.deinitStatement(&f.consequence.statements);
+                self.allocator.destroy(f.consequence);
+
+                if (f.alternative) |alt| {
+                    self.deinitStatement(&alt.statements);
+                    self.allocator.destroy(alt);
+                }
+
+                self.allocator.destroy(f);
             },
             inline else => |expr_t| self.allocator.destroy(expr_t),
         }
@@ -69,12 +89,13 @@ pub const Statement = union(enum) {
     let_statement: *LetStatement,
     return_statement: *ReturnStatement,
     expression_statement: *ExpressionStatement,
+    block_statement: *BlockStatement,
 
     pub fn TokenLiteral(self: *const Statement) []const u8 {
         return TokenLiteralHelper(Statement, self);
     }
 
-    //a statement can be a Let, Return
+    //a statement can be a Let, Return, expression, block
     pub const LetStatement = struct {
         token: Token,
         name: *Expression.Identifier,
@@ -90,6 +111,11 @@ pub const Statement = union(enum) {
         token: Token,
         expression: ?*Expression,
     };
+
+    pub const BlockStatement = struct {
+        token: Token,
+        statements: std.ArrayList(Statement),
+    };
 };
 
 pub const Expression = union(enum) {
@@ -97,12 +123,14 @@ pub const Expression = union(enum) {
     integer_literal: *IntegerLiteral,
     prefix_expression: *PrefixExpression,
     infix_expression: *InfixExpression,
+    boolean: *Boolean,
+    if_expression: *IfExpression,
 
     pub fn TokenLiteral(self: *const Expression) []const u8 {
         return TokenLiteralHelper(Expression, self);
     }
 
-    //an expression can be an identifier, integer
+    //an expression can be an identifier, integer, prefix, infix, or boolean
     pub const Identifier = struct {
         token: Token,
         value: []const u8,
@@ -124,5 +152,17 @@ pub const Expression = union(enum) {
         left: ?*Expression,
         operator: []const u8,
         right: ?*Expression,
+    };
+
+    pub const Boolean = struct {
+        token: Token,
+        value: bool,
+    };
+
+    pub const IfExpression = struct {
+        token: Token,
+        condition: ?*Expression,
+        consequence: *Statement.BlockStatement,
+        alternative: ?*Statement.BlockStatement,
     };
 };
