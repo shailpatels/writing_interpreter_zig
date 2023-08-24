@@ -16,6 +16,8 @@ pub const Program = struct {
         self.deinitStatement(&self.statements);
     }
 
+    //free up all allocated blocks of the AST, this is a bit awkward due to the multiple
+    //destroys and traversal, in the future an array based structure would be nicer
     fn deinitStatement(self: *Program, statements: *std.ArrayList(Statement)) void {
         for (statements.items) |s| {
             switch (s) {
@@ -66,6 +68,12 @@ pub const Program = struct {
 
                 self.allocator.destroy(f);
             },
+            .function_literal => |f| {
+                f.parameters.deinit();
+                self.deinitStatement(&f.body.statements);
+                self.allocator.destroy(f.body);
+                self.allocator.destroy(f);
+            },
             inline else => |expr_t| self.allocator.destroy(expr_t),
         }
 
@@ -85,6 +93,8 @@ pub fn TokenLiteralHelper(comptime T: type, self: *const T) []const u8 {
     };
 }
 
+//instead of an interface, in zig the common structure is a union with the possible subtypes being
+//potential values that can be 'enabled', both unions are tagged
 pub const Statement = union(enum) {
     let_statement: *LetStatement,
     return_statement: *ReturnStatement,
@@ -95,7 +105,7 @@ pub const Statement = union(enum) {
         return TokenLiteralHelper(Statement, self);
     }
 
-    //a statement can be a Let, Return, expression, block
+    //possible statement nodes
     pub const LetStatement = struct {
         token: Token,
         name: *Expression.Identifier,
@@ -125,12 +135,13 @@ pub const Expression = union(enum) {
     infix_expression: *InfixExpression,
     boolean: *Boolean,
     if_expression: *IfExpression,
+    function_literal: *FunctionLiteral,
 
     pub fn TokenLiteral(self: *const Expression) []const u8 {
         return TokenLiteralHelper(Expression, self);
     }
 
-    //an expression can be an identifier, integer, prefix, infix, or boolean
+    //possible expression nodes
     pub const Identifier = struct {
         token: Token,
         value: []const u8,
@@ -164,5 +175,11 @@ pub const Expression = union(enum) {
         condition: ?*Expression,
         consequence: *Statement.BlockStatement,
         alternative: ?*Statement.BlockStatement,
+    };
+
+    pub const FunctionLiteral = struct {
+        token: Token,
+        parameters: std.ArrayList(Identifier),
+        body: *Statement.BlockStatement,
     };
 };

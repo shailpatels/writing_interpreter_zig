@@ -56,7 +56,7 @@ pub const Parser = struct {
 
         //future: could build these lookup tables statically
         inline for (keys, vals) |key, val| p.precedences.putAssumeCapacity(key, val);
-        p.prefix_parse_map.ensureTotalCapacity(8) catch |err| {
+        p.prefix_parse_map.ensureTotalCapacity(9) catch |err| {
             std.debug.print("Failed to register prefix callbacks: {!}\n", .{err});
             return p;
         };
@@ -69,6 +69,7 @@ pub const Parser = struct {
         p.prefix_parse_map.putAssumeCapacity(.FALSE, Parser.parseBoolean);
         p.prefix_parse_map.putAssumeCapacity(.LPAREN, Parser.parseGroupedExpression);
         p.prefix_parse_map.putAssumeCapacity(.IF, Parser.parseIfExpression);
+        p.prefix_parse_map.putAssumeCapacity(.FUNCTION, Parser.parseFunctionLiteral);
 
         p.infix_parse_map.ensureTotalCapacity(8) catch |err| {
             std.debug.print("Failed to register infix callbacks: {!}\n", .{err});
@@ -90,6 +91,9 @@ pub const Parser = struct {
     pub fn deinit(self: *Parser) void {
         defer self.program.deinit();
 
+        for (self.errors.items) |err| {
+            self.allocator.free(err);
+        }
         self.errors.deinit();
         self.prefix_parse_map.deinit();
         self.infix_parse_map.deinit();
@@ -348,6 +352,47 @@ pub const Parser = struct {
         return expression;
     }
 
+    fn parseFunctionLiteral(self: *Parser) error{OutOfMemory}!?ast.Expression {
+        const exp = ast.Expression{ .function_literal = try self.allocator.create(ast.Expression.FunctionLiteral) };
+        const function = exp.function_literal;
+        function.token = self.current_token;
+
+        if (!self.expectPeek(.LPAREN)) return null;
+
+        const result = try self.parseFunctionParameters(&function.parameters);
+        if (result == null) function.parameters.clearAndFree();
+
+        if (!self.expectPeek(.LBRACE)) return null;
+
+        function.body = try self.allocator.create(ast.Statement.BlockStatement);
+        function.body.* = try self.parseBlockStatement();
+
+        return exp;
+    }
+
+    fn parseFunctionParameters(self: *Parser, params: *std.ArrayList(ast.Expression.Identifier)) error{OutOfMemory}!?bool {
+        params.* = std.ArrayList(ast.Expression.Identifier).init(self.allocator);
+
+        if (self.peek_token.type == .RPAREN) {
+            self.nextToken();
+            return true;
+        }
+
+        self.nextToken();
+        var ident = ast.Expression.Identifier{ .token = self.current_token, .value = self.current_token.literal };
+        try params.append(ident);
+
+        while (self.peek_token.type == .COMMA) {
+            self.nextToken();
+            self.nextToken();
+
+            ident = ast.Expression.Identifier{ .token = self.current_token, .value = self.current_token.literal };
+            try params.append(ident);
+        }
+
+        return if (!self.expectPeek(.RPAREN)) null else true;
+    }
+
     fn parseBlockStatement(self: *Parser) error{OutOfMemory}!ast.Statement.BlockStatement {
         var statement = ast.Statement.BlockStatement{ .token = self.current_token, .statements = std.ArrayList(ast.Statement).init(self.allocator) };
 
@@ -401,6 +446,10 @@ pub const Parser = struct {
         };
     }
 };
+
+///////////
+//Testing//
+///////////
 
 test "let statements" {
     const input =
@@ -456,6 +505,8 @@ fn checkParseError(parser: *Parser) error{ParseErrors}!void {
     for (parser.errors.items) |msg| {
         std.log.err("{s}", .{msg});
     }
+
+    return error.ParseErrors;
 }
 
 test "identifier expression" {
@@ -642,4 +693,47 @@ test "if else expression" {
     try std.testing.expectEqual(@as(usize, 1), if_expr.alternative.?.statements.items.len);
     const alternative = if_expr.alternative.?.statements.items[0].expression_statement;
     try std.testing.expect(std.mem.eql(u8, "y", alternative.expression.?.identifier.value));
+}
+
+test "function literal" {
+    const input = "fn(x,y){ x + y }";
+
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(std.testing.allocator, lexer);
+    defer parser.deinit();
+
+    var program = parser.parseProgram();
+    try checkParseError(&parser);
+    try std.testing.expectEqual(@as(usize, 1), program.statements.items.len);
+
+    const function = program.statements.items[0].expression_statement.expression.?.function_literal;
+    try std.testing.expectEqual(@as(usize, 2), function.parameters.items.len);
+
+    try std.testing.expect(std.mem.eql(u8, "x", function.parameters.items[0].value));
+    try std.testing.expect(std.mem.eql(u8, "y", function.parameters.items[1].value));
+
+    try std.testing.expectEqual(@as(usize, 1), function.body.statements.items.len);
+    const infix_body = function.body.statements.items[0].expression_statement.expression.?.infix_expression;
+
+    try std.testing.expect(std.mem.eql(u8, "x", infix_body.left.?.identifier.value));
+    try std.testing.expect(std.mem.eql(u8, "+", infix_body.operator));
+    try std.testing.expect(std.mem.eql(u8, "y", infix_body.right.?.identifier.value));
+}
+
+test "function parameter parsing" {
+    const inputs = [_][]const u8{ "fn() { }" };
+    const expected_params = [_][]const u8{ "" };
+
+    for(inputs, expected_params) | input, expected |{
+     var lexer = Lexer.init(input);
+    var parser = Parser.init(std.testing.allocator, lexer);
+    defer parser.deinit();
+
+    var program = parser.parseProgram();
+    _ = program;
+    try checkParseError(&parser);
+
+
+   
+    }
 }
