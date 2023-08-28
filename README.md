@@ -8,7 +8,7 @@ Writing An Interpreter In Go
 Current progress
 
 - [X] Lexing
-- [ ] Parsing
+- [X] Parsing
 - [ ] Evaluation
 - [ ] Extra
 
