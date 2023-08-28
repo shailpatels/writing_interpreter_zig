@@ -23,14 +23,15 @@ pub const Program = struct {
             switch (s) {
                 .let_statement => |l| {
                     self.allocator.destroy(l.name);
+                    if (l.value) |val| self.deinitExpression(val, true);
                     self.allocator.destroy(l);
                 },
                 .return_statement => |r| {
-                    self.deinitExpression(r.return_value);
+                    if (r.return_value) |ret| self.deinitExpression(ret, true);
                     self.allocator.destroy(r);
                 },
                 .expression_statement => |e| {
-                    if (e.expression) |expr| self.deinitExpression(expr);
+                    if (e.expression) |expr| self.deinitExpression(expr, true);
                     self.allocator.destroy(e);
                 },
                 .block_statement => |b| {
@@ -43,21 +44,21 @@ pub const Program = struct {
         statements.deinit();
     }
 
-    fn deinitExpression(self: *Program, e: *Expression) void {
+    fn deinitExpression(self: *Program, e: *const Expression, is_allocated: bool) void {
         switch (e.*) {
             .prefix_expression => |p| {
-                if (p.right) |expr| self.deinitExpression(expr);
+                if (p.right) |expr| self.deinitExpression(expr, true);
 
                 self.allocator.destroy(p);
             },
             .infix_expression => |i| {
-                if (i.right) |expr| self.deinitExpression(expr);
-                if (i.left) |expr| self.deinitExpression(expr);
+                if (i.right) |expr| self.deinitExpression(expr, true);
+                if (i.left) |expr| self.deinitExpression(expr, true);
 
                 self.allocator.destroy(i);
             },
             .if_expression => |f| {
-                if (f.condition) |con| self.deinitExpression(con);
+                if (f.condition) |con| self.deinitExpression(con, true);
                 self.deinitStatement(&f.consequence.statements);
                 self.allocator.destroy(f.consequence);
 
@@ -74,10 +75,19 @@ pub const Program = struct {
                 self.allocator.destroy(f.body);
                 self.allocator.destroy(f);
             },
+            .call_expression => |c| {
+                for (c.arguments.items) |arg| {
+                    self.deinitExpression(&arg, false);
+                }
+
+                if (c.function) |func| self.deinitExpression(&func, false);
+                c.arguments.deinit();
+                self.allocator.destroy(c);
+            },
             inline else => |expr_t| self.allocator.destroy(expr_t),
         }
 
-        self.allocator.destroy(e);
+        if (is_allocated) self.allocator.destroy(e);
     }
 
     pub fn TokenLiteral(self: *const Program) []const u8 {
@@ -109,12 +119,12 @@ pub const Statement = union(enum) {
     pub const LetStatement = struct {
         token: Token,
         name: *Expression.Identifier,
-        value: *Expression,
+        value: ?*Expression,
     };
 
     pub const ReturnStatement = struct {
         token: Token,
-        return_value: *Expression,
+        return_value: ?*Expression,
     };
 
     pub const ExpressionStatement = struct {
@@ -136,6 +146,7 @@ pub const Expression = union(enum) {
     boolean: *Boolean,
     if_expression: *IfExpression,
     function_literal: *FunctionLiteral,
+    call_expression: *CallExpression,
 
     pub fn TokenLiteral(self: *const Expression) []const u8 {
         return TokenLiteralHelper(Expression, self);
@@ -181,5 +192,11 @@ pub const Expression = union(enum) {
         token: Token,
         parameters: std.ArrayList(Identifier),
         body: *Statement.BlockStatement,
+    };
+
+    pub const CallExpression = struct {
+        token: Token,
+        function: ?Expression,
+        arguments: std.ArrayList(Expression),
     };
 };
