@@ -8,3 +8,8 @@ pub fn main() !void {
     try out.writer().writeAll("Welcome to the monkey programming language!\n");
     try repl.start(in.reader(), out.writer());
 }
+
+test {
+    _ = @import("lexer.zig");
+    _ = @import("parser.zig");
+}

@@ -14,8 +14,7 @@ pub fn start(reader: anytype, writer: anytype) !void {
         var msg = try reader.readUntilDelimiterOrEof(&msg_buf, '\n');
 
         if (msg) |m| {
-            var lexer = Lexer.init(m);
-            var parser = Parser.init(allocator, lexer);
+            var parser = Parser.init(m, allocator);
             defer parser.deinit();
 
             var program = parser.parseProgram();
