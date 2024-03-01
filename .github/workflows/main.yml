@@ -34,11 +34,13 @@ jobs:
 
   #build and save the artifact
   build:
-    - name: zig build
-      run: zig build -Doptimize=ReleaseSafe
+    runs-on: ubuntu-latest
+    steps:
+      - name: zig build
+        run: zig build -Doptimize=ReleaseSafe
 
-    - uses: actions/upload-artifact@v3
-      with:
-        name: zig-out
-        path: zig-out/bin/writing_interpreter_zig 
+      - uses: actions/upload-artifact@v3
+        with:
+          name: zig-out
+          path: zig-out/bin/writing_interpreter_zig 
 
