@@ -1,0 +1,52 @@
+name: Zig Build + Test
+on: [push, pull_request]
+env:
+  ZIG_VERSION: 0.12.0-dev.1092+68ed78775
+
+jobs:
+  #run zig fmt
+  lint:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v2
+
+        - uses: goto-bus-stop/setup-zig@v2
+          with: 
+            version: ${{ env.ZIG_VERSION }}
+
+        - name: Run zig fmt
+          run: zig fmt --check .
+
+
+  #run the unit tests and upload coverage
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Run zig unit tests
+        run: zig test src/main.zig
+
+
+  #build and save the artifact
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: goto-bus-stop/setup-zig@v2
+        with: 
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: zig build
+        run: zig build -Doptimize=ReleaseSafe
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: zig-out
+          path: zig-out/bin/writing_interpreter_zig 
+
