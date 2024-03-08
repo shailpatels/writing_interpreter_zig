@@ -80,14 +80,14 @@ pub const Lexer = struct {
     }
 
     fn readIdentifier(self: *Lexer) []const u8 {
-        var pos = self.position;
+        const pos = self.position;
         while (isLetter(self.current_char)) : (self.readChar()) {}
 
         return self.input[pos..self.position];
     }
 
     fn readNumber(self: *Lexer) []const u8 {
-        var pos = self.position;
+        const pos = self.position;
         while (std.ascii.isDigit(self.current_char)) : (self.readChar()) {}
 
         return self.input[pos..self.position];

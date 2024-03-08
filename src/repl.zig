@@ -11,13 +11,13 @@ pub fn start(reader: anytype, writer: anytype) !void {
         try writer.writeAll(">> ");
 
         var msg_buf: [4096]u8 = undefined;
-        var msg = try reader.readUntilDelimiterOrEof(&msg_buf, '\n');
+        const msg = try reader.readUntilDelimiterOrEof(&msg_buf, '\n');
 
         if (msg) |m| {
             var parser = Parser.init(m, allocator);
             defer parser.deinit();
 
-            var program = parser.parseProgram();
+            const program = parser.parseProgram();
             _ = program;
             if (parser.errors.items.len > 0) {
                 printParserError(parser.errors);

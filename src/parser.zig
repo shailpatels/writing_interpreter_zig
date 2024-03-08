@@ -217,8 +217,8 @@ pub const Parser = struct {
     //entry point for parsing let statements
     //a let is: "let <expression>;"
     fn parseLetStatement(self: *Parser) ParseErr!?ast.Node {
-        var let_statement_index = try self.addNode(ast.LetStatement);
-        var stmt = ast.Node{ .let_statement = let_statement_index };
+        const let_statement_index = try self.addNode(ast.LetStatement);
+        const stmt = ast.Node{ .let_statement = let_statement_index };
         var let_statement = self.getNode(let_statement_index, ast.LetStatement);
         let_statement.token = self.current_token;
 
@@ -242,8 +242,8 @@ pub const Parser = struct {
     //entry point for parsing return statements
     //a return is: "return <expression>;
     fn parseReturnStatement(self: *Parser) ParseErr!?ast.Node {
-        var return_statement_index = try self.addNode(ast.ReturnStatement);
-        var stmt = ast.Node{ .return_statement = return_statement_index };
+        const return_statement_index = try self.addNode(ast.ReturnStatement);
+        const stmt = ast.Node{ .return_statement = return_statement_index };
         var return_statement = self.getNode(return_statement_index, ast.ReturnStatement);
         return_statement.token = self.current_token;
 
@@ -261,8 +261,8 @@ pub const Parser = struct {
     //the expression_statement sits inside the Node struct, this could be removed and the node just holds
     //the index to an expression but this lines up closer to the go implementation
     fn parseExpressionStatement(self: *Parser) ParseErr!?ast.Node {
-        var expression_statement_index = try self.addNode(ast.ExpressionStatement);
-        var stmt = ast.Node{ .expression_statement = expression_statement_index };
+        const expression_statement_index = try self.addNode(ast.ExpressionStatement);
+        const stmt = ast.Node{ .expression_statement = expression_statement_index };
         var expression_statement = self.getNode(expression_statement_index, ast.ExpressionStatement);
         expression_statement.token = self.current_token;
 
@@ -298,7 +298,7 @@ pub const Parser = struct {
 
     //append an error if no prefix callback was found for a token
     fn noPrefixParseFnErr(self: *Parser, token: Token.Type) !void {
-        var msg = try std.fmt.allocPrint(self.allocator, "no prefix parse function for '{s}' found", .{@tagName(token)});
+        const msg = try std.fmt.allocPrint(self.allocator, "no prefix parse function for '{s}' found", .{@tagName(token)});
         try self.errors.append(msg);
     }
 
@@ -315,7 +315,7 @@ pub const Parser = struct {
 
     //append an error when we have an unexpected token type
     fn peekError(self: *Parser, expected: Token.Type) !void {
-        var msg = try std.fmt.allocPrint(self.allocator, "expected token of '{s}', got '{s}' instead", .{ @tagName(expected), @tagName(self.peek_token.type) });
+        const msg = try std.fmt.allocPrint(self.allocator, "expected token of '{s}', got '{s}' instead", .{ @tagName(expected), @tagName(self.peek_token.type) });
         try self.errors.append(msg);
     }
 
@@ -335,7 +335,7 @@ pub const Parser = struct {
             return null;
         };
 
-        var integer = ast.IntegerLiteral{ .value = val, .token = self.current_token };
+        const integer = ast.IntegerLiteral{ .value = val, .token = self.current_token };
         const expression = ast.Expression{ .integer_literal = integer };
         return try self.addExistingNode(ast.Expression, expression);
     }
@@ -444,7 +444,7 @@ pub const Parser = struct {
 
         if (!self.expectPeek(.LPAREN)) return null;
 
-        var parems = try self.parseFunctionParameters();
+        const parems = try self.parseFunctionParameters();
         if (parems) |p| function_literal.parameters = p else return null;
 
         if (!self.expectPeek(.LBRACE)) return null;
@@ -485,7 +485,7 @@ pub const Parser = struct {
     }
 
     fn parseCallExpression(self: *Parser, left: ?u32) ParseErr!?u32 {
-        var expr = ast.Expression{ .call_expression = .{ .token = self.current_token, .function = left.?, .arguments = try self.parseCallArguments() } };
+        const expr = ast.Expression{ .call_expression = .{ .token = self.current_token, .function = left.?, .arguments = try self.parseCallArguments() } };
 
         return try self.addExistingNode(ast.Expression, expr);
     }
@@ -523,7 +523,7 @@ test "let statement" {
 
     var parser = Parser.init(input, std.testing.allocator);
     defer parser.deinit();
-    var program = parser.parseProgram();
+    const program = parser.parseProgram();
     try std.testing.expectEqual(@as(usize, 3), program.statements.items.len);
     try std.testing.expectEqual(@as(usize, 0), parser.errors.items.len);
 
@@ -557,7 +557,7 @@ test "return statement" {
     var parser = Parser.init(input, std.testing.allocator);
     defer parser.deinit();
 
-    var program = parser.parseProgram();
+    const program = parser.parseProgram();
     try checkError(parser);
     try std.testing.expectEqual(@as(usize, 3), program.statements.items.len);
     for (program.statements.items, expected_ident) |statement, ident| {
@@ -573,7 +573,7 @@ test "identifiers" {
     var parser = Parser.init(input, std.testing.allocator);
     defer parser.deinit();
 
-    var program = parser.parseProgram();
+    const program = parser.parseProgram();
     try std.testing.expectEqual(@as(usize, 0), parser.errors.items.len);
     try std.testing.expectEqual(@as(usize, 1), program.statements.items.len);
 
@@ -588,7 +588,7 @@ test "integer literal" {
     var parser = Parser.init(input, std.testing.allocator);
     defer parser.deinit();
 
-    var program = parser.parseProgram();
+    const program = parser.parseProgram();
     try std.testing.expectEqual(@as(usize, 0), parser.errors.items.len);
     try std.testing.expectEqual(@as(usize, 1), program.statements.items.len);
 
@@ -608,7 +608,7 @@ test "prefix operators" {
         var parser = Parser.init(input, std.testing.allocator);
         defer parser.deinit();
 
-        var program = parser.parseProgram();
+        const program = parser.parseProgram();
         try checkError(parser);
         try std.testing.expectEqual(@as(usize, 1), program.statements.items.len);
         const expression_statement = program.statements.items[0].expression_statement;
@@ -637,7 +637,7 @@ test "infix operators" {
         var parser = Parser.init(input, std.testing.allocator);
         defer parser.deinit();
 
-        var program = parser.parseProgram();
+        const program = parser.parseProgram();
         try checkError(parser);
         try std.testing.expectEqual(@as(usize, 1), program.statements.items.len);
 
@@ -661,7 +661,7 @@ test "infix variables" {
     var parser = Parser.init(input, std.testing.allocator);
     defer parser.deinit();
 
-    var program = parser.parseProgram();
+    const program = parser.parseProgram();
     try checkError(parser);
     try std.testing.expectEqual(@as(usize, 1), program.statements.items.len);
     const infix_expression = parser.getNode(program.statements.items[0].expression_statement, ast.ExpressionStatement);
@@ -677,7 +677,7 @@ test "boolean" {
         var parser = Parser.init(input, std.testing.allocator);
         defer parser.deinit();
 
-        var program = parser.parseProgram();
+        const program = parser.parseProgram();
         try std.testing.expectEqual(@as(usize, 0), parser.errors.items.len);
         try std.testing.expectEqual(@as(usize, 1), program.statements.items.len);
 
@@ -691,7 +691,7 @@ test "boolean" {
         var parser = Parser.init(input, std.testing.allocator);
         defer parser.deinit();
 
-        var program = parser.parseProgram();
+        const program = parser.parseProgram();
         try std.testing.expectEqual(@as(usize, 0), parser.errors.items.len);
         try std.testing.expectEqual(@as(usize, 1), program.statements.items.len);
 
@@ -707,7 +707,7 @@ test "group expressions" {
     var parser = Parser.init(input, std.testing.allocator);
     defer parser.deinit();
 
-    var program = parser.parseProgram();
+    const program = parser.parseProgram();
     try checkError(parser);
     _ = program;
     try std.testing.expectEqual(@as(usize, 0), parser.errors.items.len);
@@ -719,7 +719,7 @@ test "if expression" {
         var parser = Parser.init(input, std.testing.allocator);
         defer parser.deinit();
 
-        var program = parser.parseProgram();
+        const program = parser.parseProgram();
         try checkError(parser);
         try std.testing.expectEqual(@as(usize, 1), program.statements.items.len);
 
@@ -734,7 +734,7 @@ test "if expression" {
         var parser = Parser.init(input, std.testing.allocator);
         defer parser.deinit();
 
-        var program = parser.parseProgram();
+        const program = parser.parseProgram();
         try checkError(parser);
         try std.testing.expectEqual(@as(usize, 1), program.statements.items.len);
 
@@ -750,7 +750,7 @@ test "function literal" {
     var parser = Parser.init(input, std.testing.allocator);
     defer parser.deinit();
 
-    var program = parser.parseProgram();
+    const program = parser.parseProgram();
     try checkError(parser);
     try std.testing.expectEqual(@as(usize, 1), program.statements.items.len);
 
@@ -794,7 +794,7 @@ test "function params" {
         var parser = Parser.init(input, std.testing.allocator);
         defer parser.deinit();
 
-        var program = parser.parseProgram();
+        const program = parser.parseProgram();
 
         const expr = parser.getNode(program.statements.items[0].expression_statement, ast.Expression);
         const func_literal = expr.function_literal;
@@ -810,7 +810,7 @@ test "call expressions" {
     var parser = Parser.init(input, std.testing.allocator);
     defer parser.deinit();
 
-    var program = parser.parseProgram();
+    const program = parser.parseProgram();
     try checkError(parser);
     try std.testing.expectEqual(@as(usize, 1), program.statements.items.len);
 }
