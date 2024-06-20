@@ -47,7 +47,7 @@ pub const Token = struct {
         RETURN,
     };
 
-    const key_words = std.ComptimeStringMap(Token.Type, .{
+    const key_words = std.StaticStringMap(Token.Type).initComptime(.{
         .{ "fn", .FUNCTION },
         .{ "let", .LET },
         .{ "true", .TRUE },

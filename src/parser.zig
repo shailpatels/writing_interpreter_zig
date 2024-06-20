@@ -22,7 +22,7 @@ pub const Parser = struct {
     };
 
     //precedence table
-    const precedence_table = std.ComptimeStringMap(Precedence, .{
+    const precedence_table = std.StaticStringMap(Precedence).initComptime(.{
         .{ @tagName(.EQ), .EQUALS },
         .{ @tagName(.NOT_EQ), .EQUALS },
         .{ @tagName(.LT), .LESSGREATER },
@@ -65,7 +65,7 @@ pub const Parser = struct {
     const infix_fn = *const (fn (*Parser, ?u32) ParseErr!?u32);
 
     //lookup table to get a function from a token type for prefix parsing
-    const prefix_parse_fns = std.ComptimeStringMap(prefix_fn, .{
+    const prefix_parse_fns = std.StaticStringMap(prefix_fn).initComptime(.{
         .{ @tagName(.IDENT), Parser.parseIdentifier },
         .{ @tagName(.INT), Parser.parseIntegerLiteral },
         .{ @tagName(.BANG), Parser.parsePrefixExpression },
@@ -78,7 +78,7 @@ pub const Parser = struct {
     });
 
     //lookup table to get a function from a token type for infix parsing
-    const infix_parse_fns = std.ComptimeStringMap(infix_fn, .{
+    const infix_parse_fns = std.StaticStringMap(infix_fn).initComptime(.{
         .{ @tagName(.PLUS), Parser.parseInfixExpression },
         .{ @tagName(.MINUS), Parser.parseInfixExpression },
         .{ @tagName(.SLASH), Parser.parseInfixExpression },
