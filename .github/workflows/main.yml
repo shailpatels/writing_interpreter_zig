@@ -1,7 +1,7 @@
 name: Zig Build + Test
 on: [push, pull_request]
 env:
-  ZIG_VERSION: 0.12.0-dev.1092+68ed78775
+  ZIG_VERSION: 0.13.0
 
 jobs:
   #run zig fmt
@@ -10,8 +10,8 @@ jobs:
       steps:
         - uses: actions/checkout@v2
 
-        - uses: goto-bus-stop/setup-zig@v2
-          with: 
+        - uses: mlugg/setup-zig@v1
+          with:
             version: ${{ env.ZIG_VERSION }}
 
         - name: Run zig fmt
@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - uses: goto-bus-stop/setup-zig@v2
+      - uses: mlugg/setup-zig@v1
         with:
           version: ${{ env.ZIG_VERSION }}
 
@@ -38,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - uses: goto-bus-stop/setup-zig@v2
+      - uses: mlugg/setup-zig@v1
         with: 
           version: ${{ env.ZIG_VERSION }}
 
